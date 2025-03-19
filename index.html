@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>360° Virtual Tour</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            font-family: Arial, sans-serif;
+        }
+        #container { 
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        #info {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            text-shadow: 1px 1px 2px black;
+            pointer-events: none;
+        }
+        .hotspot {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.5);
+            border: 3px solid white;
+            transform: translate(-50%, -50%);
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px black;
+            transition: all 0.3s ease;
+        }
+        .hotspot:hover {
+            background-color: rgba(255, 255, 255, 0.8);
+            transform: translate(-50%, -50%) scale(1.2);
+        }
+        .loading {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 24px;
+            z-index: 100;
+        }
+        #room-name {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-size: 18px;
+            pointer-events: none;
+        }
+        #navigation {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            text-align: center;
+            z-index: 10;
+        }
+        .nav-button {
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 10px 15px;
+            margin: 0 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .nav-button:hover {
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+        .instructions {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            max-width: 300px;
+            font-size: 14px;
+            z-index: 20;
+            transition: opacity 0.3s;
+        }
+        .instructions h3 {
+            margin-top: 0;
+        }
+        .close-button {
+            position: absolute;
+            top: 5px;
+            right: 10px;
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="room-name"></div>
+        <div id="navigation"></div>
+        <div id="info">Use mouse to look around, scroll to zoom</div>
+        <div class="loading">Loading...</div>
+        <div class="instructions">
+            <button class="close-button" onclick="this.parentElement.style.opacity='0'; setTimeout(() => this.parentElement.style.display='none', 300);">×</button>
+            <h3>Virtual Tour Instructions</h3>
+            <p>• Click and drag to look around</p>
+            <p>• Use mouse wheel to zoom in/out</p>
+            <p>• Click on circular hotspots to navigate to different areas</p>
+            <p>• Use the bottom menu for quick access to all areas</p>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // === CONFIGURATION - USING THE 4 SPECIFIED IMAGE PATHS ===
+        const rooms = [
+            {
+                id: 'lobby',
+                name: 'Lobby',
+                image: 'lobby.jpeg',
+                hotspots: [
+                    { x: 0.8, y: 0, z: -0.2, targetRoom: 'living-room', label: 'Living Room' },
+                    { x: -0.5, y: 0, z: -0.5, targetRoom: 'meeting-room', label: 'Meeting Room' }
+                ]
+            },
+            {
+                id: 'living-room',
+                name: 'Living Room',
+                image: 'living-room.jpeg',
+                hotspots: [
+                    { x: -0.5, y: 0, z: -0.5, targetRoom: 'bathroom', label: 'Bathroom' },
+                    { x: 0.8, y: 0, z: -0.2, targetRoom: 'meeting-room', label: 'Meeting Room' },
+                    { x: 0, y: 0, z: 0.8, targetRoom: 'lobby', label: 'Back to Lobby' }
+                ]
+            },
+            {
+                id: 'meeting-room',
+                name: 'Meeting Room',
+                image: 'meeting-room.jpeg',
+                hotspots: [
+                    { x: 0.5, y: 0, z: 0.5, targetRoom: 'lobby', label: 'Lobby' },
+                    { x: -0.7, y: 0, z: 0.3, targetRoom: 'living-room', label: 'Living Room' },
+                    { x: 0, y: 0, z: -0.8, targetRoom: 'bathroom', label: 'Bathroom' }
+                ]
+            },
+            {
+                id: 'bathroom',
+                name: 'Bathroom',
+                image: 'bathroom.jpeg',
+                hotspots: [
+                    { x: 0, y: 0, z: 0.8, targetRoom: 'living-room', label: 'Living Room' },
+                    { x: 0.8, y: 0, z: 0.2, targetRoom: 'meeting-room', label: 'Meeting Room' }
+                ]
+            }
+        ];
+        // === END CONFIGURATION ===
+
+        // Three.js variables
+        let camera, scene, renderer;
+        let isUserInteracting = false;
+        let onPointerDownMouseX = 0, onPointerDownMouseY = 0;
+        let lon = 0, onPointerDownLon = 0;
+        let lat = 0, onPointerDownLat = 0;
+        let phi = 0, theta = 0;
+        let currentRoom = null;
+        let hotspotElements = [];
+
+        // Initialize the scene
+        init();
+        animate();
+
+        function init() {
+            // Set up camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 1100);
+            camera.position.z = 0.01;
+            
+            // Set up scene
+            scene = new THREE.Scene();
+            
+            // Set up renderer
+            renderer = new THREE.WebGLRenderer();
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.getElementById('container').appendChild(renderer.domElement);
+            
+            // Set up navigation
+            createNavigation();
+            
+            // Get room from URL hash or load first room
+            const initialRoomId = window.location.hash.substring(1);
+            if (initialRoomId && rooms.some(room => room.id === initialRoomId)) {
+                loadRoom(initialRoomId);
+            } else {
+                loadRoom(rooms[0].id);
+            }
+            
+            // Event listeners
+            window.addEventListener('resize', onWindowResize);
+            document.addEventListener('pointerdown', onPointerDown);
+            document.addEventListener('pointermove', onPointerMove);
+            document.addEventListener('pointerup', onPointerUp);
+            document.addEventListener('wheel', onDocumentMouseWheel);
+            
+            // Update URL hash when changing rooms
+            window.addEventListener('hashchange', function() {
+                const roomId = window.location.hash.substring(1);
+                if (roomId && rooms.some(room => room.id === roomId)) {
+                    loadRoom(roomId);
+                }
+            });
+        }
+
+        function createNavigation() {
+            const navContainer = document.getElementById('navigation');
+            navContainer.innerHTML = '';
+            
+            rooms.forEach(room => {
+                const button = document.createElement('button');
+                button.className = 'nav-button';
+                button.textContent = room.name;
+                button.addEventListener('click', () => {
+                    window.location.hash = room.id;
+                    loadRoom(room.id);
+                });
+                navContainer.appendChild(button);
+            });
+        }
+
+        function loadRoom(roomId) {
+            const loadingScreen = document.querySelector('.loading');
+            loadingScreen.style.display = 'flex';
+            
+            // Find the room data
+            currentRoom = rooms.find(room => room.id === roomId);
+            if (!currentRoom) {
+                console.error('Room not found:', roomId);
+                loadingScreen.style.display = 'none';
+                return;
+            }
+            
+            // Update URL hash and room name display
+            window.location.hash = roomId;
+            document.getElementById('room-name').textContent = currentRoom.name;
+            
+            // Clear existing hotspots
+            clearHotspots();
+            
+            // Load the panorama texture
+            const loader = new THREE.TextureLoader();
+            loader.load(
+                currentRoom.image,
+                function(texture) {
+                    texture.mapping = THREE.EquirectangularReflectionMapping;
+                    
+                    // Create spherical panorama
+                    const geometry = new THREE.SphereGeometry(500, 60, 40);
+                    geometry.scale(-1, 1, 1); // Invert the sphere
+                    
+                    const material = new THREE.MeshBasicMaterial({
+                        map: texture
+                    });
+                    
+                    // Clear previous panorama if exists
+                    while(scene.children.length > 0){ 
+                        scene.remove(scene.children[0]); 
+                    }
+                    
+                    const mesh = new THREE.Mesh(geometry, material);
+                    scene.add(mesh);
+                    
+                    // Create hotspots for this room
+                    createHotspots();
+                    
+                    loadingScreen.style.display = 'none';
+                },
+                undefined,
+                function(error) {
+                    console.error('Error loading texture:', error);
+                    loadingScreen.textContent = 'Error loading image. Check file path.';
+                }
+            );
+        }
+
+        function createHotspots() {
+            if (!currentRoom || !currentRoom.hotspots) return;
+            
+            currentRoom.hotspots.forEach((hotspot, index) => {
+                const element = document.createElement('div');
+                element.className = 'hotspot';
+                element.textContent = '→';
+                element.setAttribute('data-target', hotspot.targetRoom);
+                element.setAttribute('data-label', hotspot.label || hotspot.targetRoom);
+                
+                // Add tooltip on hover
+                element.title = hotspot.label || hotspot.targetRoom;
+                
+                // Clicking navigates to the target room
+                element.addEventListener('click', function() {
+                    window.location.hash = hotspot.targetRoom;
+                    loadRoom(hotspot.targetRoom);
+                });
+                
+                document.getElementById('container').appendChild(element);
+                hotspotElements.push({
+                    element: element,
+                    position: new THREE.Vector3(hotspot.x, hotspot.y, hotspot.z).normalize().multiplyScalar(30)
+                });
+            });
+        }
+
+        function clearHotspots() {
+            hotspotElements.forEach(hotspot => {
+                if (hotspot.element.parentNode) {
+                    hotspot.element.parentNode.removeChild(hotspot.element);
+                }
+            });
+            hotspotElements = [];
+        }
+
+        function updateHotspotPositions() {
+            hotspotElements.forEach(hotspot => {
+                const position = hotspot.position.clone();
+                position.applyQuaternion(camera.quaternion);
+                
+                // Only show hotspots in front of the camera
+                if (position.z > 0) {
+                    hotspot.element.style.display = 'none';
+                    return;
+                }
+                
+                // Convert 3D position to screen coordinates
+                const projectedPosition = position.clone().project(camera);
+                const x = (projectedPosition.x * 0.5 + 0.5) * window.innerWidth;
+                const y = (-projectedPosition.y * 0.5 + 0.5) * window.innerHeight;
+                
+                // Update hotspot element position
+                hotspot.element.style.display = 'flex';
+                hotspot.element.style.left = x + 'px';
+                hotspot.element.style.top = y + 'px';
+                
+                // Scale based on distance (perspective effect)
+                const scale = Math.max(0.5, 1 - Math.abs(position.z) * 0.1);
+                hotspot.element.style.transform = `translate(-50%, -50%) scale(${scale})`;
+            });
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function onPointerDown(event) {
+            if (event.isPrimary === false) return;
+            
+            isUserInteracting = true;
+            
+            onPointerDownMouseX = event.clientX;
+            onPointerDownMouseY = event.clientY;
+            
+            onPointerDownLon = lon;
+            onPointerDownLat = lat;
+        }
+
+        function onPointerMove(event) {
+            if (isUserInteracting === false) return;
+            
+            lon = (onPointerDownMouseX - event.clientX) * 0.1 + onPointerDownLon;
+            lat = (event.clientY - onPointerDownMouseY) * 0.1 + onPointerDownLat;
+        }
+
+        function onPointerUp() {
+            isUserInteracting = false;
+        }
+
+        function onDocumentMouseWheel(event) {
+            // Zoom with mouse wheel
+            const fov = camera.fov + event.deltaY * 0.05;
+            camera.fov = THREE.MathUtils.clamp(fov, 10, 100);
+            camera.updateProjectionMatrix();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            update();
+        }
+
+        function update() {
+            // Adjust viewing angle
+            lat = Math.max(-85, Math.min(85, lat));
+            phi = THREE.MathUtils.degToRad(90 - lat);
+            theta = THREE.MathUtils.degToRad(lon);
+            
+            const x = 500 * Math.sin(phi) * Math.cos(theta);
+            const y = 500 * Math.cos(phi);
+            const z = 500 * Math.sin(phi) * Math.sin(theta);
+            
+            camera.lookAt(x, y, z);
+            
+            // Update hotspot positions
+            updateHotspotPositions();
+            
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
